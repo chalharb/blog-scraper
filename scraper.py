@@ -19,7 +19,6 @@ from bs4 import BeautifulSoup
 def get_data(url):
     response = requests.get(url)
     response.raise_for_status()
-
     data = response.text
 
     return data
@@ -41,16 +40,18 @@ def create_directory(output_dir):
             os.umask(original_umask)
 
 
-def create_files(all_articles, output_dir):
-    article_titles = np.array(all_articles).ravel()  # Converts 2d to 1d array
-    print(len(article_titles))
+def create_files(all_articles, all_articles_content, output_dir):
+    all_articles = np.array(all_articles).ravel()
+    all_articles_content = np.array(all_articles_content).ravel()
 
-    for file_name in article_titles:
-        # Open a file
-        fd = os.open(output_dir + "/" + file_name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
-        # Write one string
-        os.write(fd, file_name.encode())
-        # Close opened file
+    # combines 2 arrarys into a dictionary
+    combined_articles = dict(zip(all_articles, all_articles_content))
+
+    # TODO: Add check to verify that titles and content are ==
+
+    for title, content in combined_articles.items():
+        fd = os.open(output_dir + "/" + title, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+        os.write(fd, content.encode())
         os.close(fd)
 
 
@@ -72,6 +73,7 @@ def main():
     page_start = 1
     output_dir = "output-files"
     all_articles = []
+    all_articles_content = []
 
     # check if directory exists
     try:
@@ -83,19 +85,23 @@ def main():
         try:
             built_url = url + str(page_start)
             data = get_data(built_url)
-            url_title = []
+            file_names = []
+            file_contents = []
 
             soup = BeautifulSoup(data, 'html.parser')
             print(built_url)
-            entry_count = len(soup.select('.entry-title'))
 
-            print(bcolors.OKBLUE + 'Number of entries on this page {}...'.format(entry_count) + bcolors.ENDC)
-
+            # builds file names and sanitizes for file name
             for article in soup.select('.entry-title'):
-                # Sanitizes for filename creation
-                url_title.append(article.text.replace(u'\xa0', u' ').replace(" ", "-").replace("’", ""))
+                file_names.append(article.text.replace(u'\xa0', u' ').replace(" ", "-").replace("’", ""))
 
-            all_articles.append(url_title)
+            # builds content for files
+            for content in soup.select('.entry-content'):
+                file_contents.append(content)
+
+            # Append to global vars
+            all_articles.append(file_names)
+            all_articles_content.append(file_contents)
 
         except Exception as e:
             print(bcolors.FAIL + "\nNo page found. We're probably done. Aborting." + bcolors.ENDC)
@@ -103,9 +109,6 @@ def main():
 
         page_start += 1
 
-    create_files(all_articles, output_dir)
-    # all_articles_count = len(all_articles)
-    # print("\nTotal number of articles gathered: %d" % all_articles_count)
-    # print(all_articles)
+    create_files(all_articles, all_articles_content, output_dir)
 
 if __name__ == '__main__': main()
