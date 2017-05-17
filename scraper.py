@@ -44,15 +44,16 @@ def create_files(all_articles, all_articles_content, output_dir):
     all_articles = np.array(all_articles).ravel()
     all_articles_content = np.array(all_articles_content).ravel()
 
-    # combines 2 arrarys into a dictionary
-    combined_articles = dict(zip(all_articles, all_articles_content))
+    if len(all_articles) == len(all_articles_content):
+        # combines 2 arrarys into a dictionary
+        combined_articles = dict(zip(all_articles, all_articles_content))
 
-    # TODO: Add check to verify that titles and content are ==
-
-    for title, content in combined_articles.items():
-        fd = os.open(output_dir + "/" + title, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
-        os.write(fd, content.encode())
-        os.close(fd)
+        for title, content in combined_articles.items():
+            fd = os.open(output_dir + "/" + title, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+            os.write(fd, content.encode())
+            os.close(fd)
+    else:
+        print('Was unable to scrape the blog correctly. Try again!')
 
 
 # colors for console output
@@ -110,5 +111,6 @@ def main():
         page_start += 1
 
     create_files(all_articles, all_articles_content, output_dir)
+    # TODO: GET ALL IMAGES (.entry-content > img)
 
 if __name__ == '__main__': main()
