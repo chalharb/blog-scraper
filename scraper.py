@@ -1,27 +1,32 @@
 ###################
 # Web Scraper
-# v.0.0.1
+# v.1.0
 # Logan Harber
 ##################
 
-import os
 import requests
+import os
 import numpy as np
-
 from bs4 import BeautifulSoup
+import urllib.request
+import ssl
 
 
-#############
-# FUNCTIONS
-#############
+# Returns generated URL with page number
+def generate_url(url, page_number):
+    return url + str(page_number)
 
-# Goes to page and returns the data object
+
+# Return response text of URL
 def get_data(url):
     response = requests.get(url)
     response.raise_for_status()
-    data = response.text
+    return response.text
 
-    return data
+
+# Converts title to URL Title
+def convert_to_url_title(article):
+    return article.text.replace(u'\xa0', u' ').replace(" ", "-").replace("’", "")
 
 
 # Creates a directory to store the output files
@@ -31,86 +36,107 @@ def create_directory(output_dir):
     if os.path.isdir(output_dir):
         raise Exception('An error has occurred')
     else:
-        print(bcolors.WARNING + "Attempting to create output directory..." + bcolors.ENDC)
+        print("Attempting to create output directory...")
         try:
             original_umask = os.umask(0)
             os.makedirs(output_dir, desired_permission)
-            print(bcolors.OKGREEN + "Output directory created successfully!" + bcolors.ENDC)
+            print("Output directory created successfully!")
         finally:
             os.umask(original_umask)
 
 
-def create_files(all_articles, all_articles_content, output_dir):
-    all_articles = np.array(all_articles).ravel()
-    all_articles_content = np.array(all_articles_content).ravel()
+# Creates files with html content in the output directory
+def create_files(article_titles, article_contents, output_path):
+    article_titles = np.array(article_titles).ravel()
+    article_contents = np.array(article_contents).ravel()
 
-    if len(all_articles) == len(all_articles_content):
+    if len(article_titles) == len(article_contents):
         # combines 2 arrarys into a dictionary
-        combined_articles = dict(zip(all_articles, all_articles_content))
+        combined_articles = dict(zip(article_titles, article_contents))
 
-        for title, content in combined_articles.items():
-            fd = os.open(output_dir + "/" + title, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+        for [title, content] in combined_articles.items():
+            fd = os.open(output_path + "/" + title, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
             os.write(fd, content.encode())
             os.close(fd)
     else:
         print('Was unable to scrape the blog correctly. Try again!')
 
 
-# colors for console output
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
+def get_all_images(all_images, output_path):
+    ctx = fake_ssl()
+
+    for image in all_images:
+        resource = urllib.request.urlopen(image, context=ctx)
+
+        filename = os.path.basename(image)
+        sep = '?'  # Removes evertying after file extension that wordpress adds
+        filename = filename.split(sep, 1)[0]
+
+        print("Downloading {}".format(filename))
+        output = open(output_path + "/" + filename, "wb")
+        output.write(resource.read())
+        output.close()
+
+
+# Fakes ssl cert to be able to get images
+def fake_ssl():
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 
 # main function
 def main():
     url = "https://medicalcitychildrenshospitalurgentcareblog.wordpress.com/page/"
     page_start = 1
-    output_dir = "output-files"
-    all_articles = []
+    output_dir = "files"
+    images_dir = "images"
+    image_extension = ''
+    all_articles_titles = []
     all_articles_content = []
-
-    # check if directory exists
+    all_images = []
+    # check if directory exists if not creates it
     try:
         create_directory(output_dir)
     except Exception as e:
-        print(bcolors.FAIL + "Directory Already Exists!" + bcolors.ENDC)
+        print("CONSOLE: File Directory Already Exists!")
 
+    try:
+        create_directory(images_dir)
+    except Exception as e:
+        print("CONSOLE: Images Directory Already Exists!")
+
+    # Crawls pages and stores data
     while True:
         try:
-            built_url = url + str(page_start)
-            data = get_data(built_url)
-            file_names = []
-            file_contents = []
-
+            page_url = generate_url(url, page_start)
+            data = get_data(page_url)
             soup = BeautifulSoup(data, 'html.parser')
-            print(built_url)
+            print(page_url)
 
-            # builds file names and sanitizes for file name
-            for article in soup.select('.entry-title'):
-                file_names.append(article.text.replace(u'\xa0', u' ').replace(" ", "-").replace("’", ""))
+            # Stores all Titles
+            for title in soup.select('.entry-title'):
+                all_articles_titles.append(convert_to_url_title(title))
 
-            # builds content for files
+            # Stores all Content
             for content in soup.select('.entry-content'):
-                file_contents.append(content)
+                all_articles_content.append(content)
 
-            # Append to global vars
-            all_articles.append(file_names)
-            all_articles_content.append(file_contents)
+            # Stores all images
+            for image in soup.select('.entry-content img'):
+                all_images.append(image['src'])
 
         except Exception as e:
-            print(bcolors.FAIL + "\nNo page found. We're probably done. Aborting." + bcolors.ENDC)
+            print("\nNo more pages found...")
             break
 
         page_start += 1
 
-    create_files(all_articles, all_articles_content, output_dir)
-    # TODO: GET ALL IMAGES (.entry-content > img)
+    create_files(all_articles_titles, all_articles_content, output_dir)
+    get_all_images(all_images, images_dir)
+
+    print("\nTotal Articles Scraped: {}".format(len(all_articles_titles)))
+
 
 if __name__ == '__main__': main()
